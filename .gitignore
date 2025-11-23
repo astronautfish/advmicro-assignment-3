@@ -1,0 +1,27 @@
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+*.pytxcode
+
+# User defined
+*.pytxcode
+# *.csv
+__pycache__
+.venv
+.DS_Store
+
+## Latex
+*.tex
+*.sty
+*.bib
+frontpage/
+illustrations/
+sections/
+tables/
+# *.pdf
