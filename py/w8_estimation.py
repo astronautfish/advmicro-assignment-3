@@ -44,7 +44,11 @@ def estimate(
     # call optimizer
     result = optimize.minimize(Q, theta0, options=options, **kwargs)
     
-    cov, se = variance(q, y, x, result, cov_type)   
+    if cov_type == None:
+        cov, se = None, 1.0 # put se to 1.0 to avoid division by zero later on
+
+    else:
+        cov, se = variance(q, y, x, result, cov_type)   
 
     # collect output in a dict 
     res = {
