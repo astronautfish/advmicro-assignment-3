@@ -24,7 +24,7 @@ def current_and_next_value(df, var, value):
         raise ValueError(f'Value {value} is out of range [{uniques[0]}, {uniques[-1]})')
     
     if dummy_var:
-        return 0, 1
+        return True, 0, 1
     
     else:
         
@@ -41,7 +41,11 @@ def current_and_next_value(df, var, value):
 
         indx_next = indx + 1
 
-        return uniques[indx], uniques[indx_next]
+        if indx_next == len(uniques):
+            return False, None, None
+        
+        else:
+            return True, uniques[indx], uniques[indx_next]
 
 def compute_simple_pe(x_old, x_new, theta_probit, theta_logit, compute_grads=False):
 
@@ -108,8 +112,6 @@ def compute_ape(x, data, x_labels, x_labels_imp, b_lpm, b_probit, b_logit, do_ch
 
         idx = x_labels.index(var)
 
-        pes_i = np.zeros((x.shape[0], 3)) + np.nan # logit, probit
-
         for obs in range(x.shape[0]):
 
             x_obs = x[obs]
@@ -117,14 +119,16 @@ def compute_ape(x, data, x_labels, x_labels_imp, b_lpm, b_probit, b_logit, do_ch
             x_obs_high = x_obs.copy()
             x_obs_low = x_obs.copy()
 
-            x_obs_low[idx], x_obs_high[idx] = current_and_next_value(data, var, x_obs[idx])
+            bool_, low, high = current_and_next_value(data, var, x_obs[idx])
 
-            pes_i[obs, :2] = compute_simple_pe(x_obs_low, x_obs_high, b_probit, b_logit)
-            pes_i[obs, -1] = lm.predict(b_lpm, x_obs_high) - lm.predict(b_lpm, x_obs_low)
-        
-        pes[i, :, :] = pes_i
-    
-    APE = pes.mean(axis=1)
+            if bool_:
+                x_obs_low[idx], x_obs_high[idx] = low, high
+                pes[i, obs, :2] = compute_simple_pe(x_obs_low, x_obs_high, b_probit, b_logit)
+                pes[i, obs, -1] = lm.predict(b_lpm, x_obs_high) - lm.predict(b_lpm, x_obs_low)
+
+    # clean of poisson obs
+
+    APE = np.nanmean(pes, axis=1) #pes.mean(axis=1)
 
     if do_check_lpm: 
         for i, var in enumerate(x_labels_imp): print(f'{var} has same APE and LPM:\t{np.isclose(b_lpm[x_labels.index(var)], APE[i, -1])}')
@@ -225,14 +229,14 @@ def boot(y, x, special_joe, data, x_labels, x_labels_imp, nboot=1000, seed=42, d
     b_logit_boot = np.zeros((nboot, x.shape[1])) + np.nan
     b_lpm_boot = np.zeros((nboot, x.shape[1])) + np.nan
 
-    special_pes_boot = np.zeros((nboot, 8, 3, 2)) + np.nan
-    ape_boot = np.zeros((nboot, len(x_labels_imp,), 3)) + np.nan
+    #special_pes_boot = np.zeros((nboot, 8, 3, 2)) + np.nan
+    ape_boot = np.zeros((nboot, len(x_labels[1:]), 3)) + np.nan
 
-    if do_pea:
-        pea_boot = np.zeros((nboot, x.shape[1], 2)) + np.nan # 2 models: probit, logit
-        pea_intensive_boot = np.zeros((nboot, x.shape[1], 2)) + np.nan # 2 models: probit, logit
-        assert average_joes
-        assert x_labels
+    #if do_pea:
+    #    pea_boot = np.zeros((nboot, x.shape[1], 2)) + np.nan # 2 models: probit, logit
+    #    pea_intensive_boot = np.zeros((nboot, x.shape[1], 2)) + np.nan # 2 models: probit, logit
+    #    assert average_joes
+    #    assert x_labels
 
     subsamples_events = np.zeros(nboot) + np.nan
 
@@ -259,18 +263,14 @@ def boot(y, x, special_joe, data, x_labels, x_labels_imp, nboot=1000, seed=42, d
         b_lpm_boot[i, :] = ols_results['b_hat']
 
         # 3. compute pea and pea_intensive
-        if do_pea:
-            pea_boot[i, :, :], _ = compute_all_pe(average_joes[0], x_labels, data, probit_results['theta'], logit_results['theta'], None, None, do_delta=False)
-            pea_intensive_boot[i, :, :], _ = compute_all_pe(average_joes[1], x_labels, data, probit_results['theta'], logit_results['theta'], None, None, do_delta=False)
+        #if do_pea:
+        #    pea_boot[i, :, :], _ = compute_all_pe(average_joes[0], x_labels, data, probit_results['theta'], logit_results['theta'], None, None, do_delta=False)
+        #    pea_intensive_boot[i, :, :], _ = compute_all_pe(average_joes[1], x_labels, data, probit_results['theta'], logit_results['theta'], None, None, do_delta=False)
 
         # 4. compute selected PEs
-        special_pes_boot[i, :, :, :] = compute_special_pes(special_joe, x_labels, probit_results['theta'], logit_results['theta'])  
+        #special_pes_boot[i, :, :, :] = compute_special_pes(special_joe, x_labels, probit_results['theta'], logit_results['theta'])  
 
         # 5. compute ape
-        ape_boot[i, :] = compute_ape(x, data, x_labels, x_labels_imp, ols_results['b_hat'], probit_results['theta'], logit_results['theta'], do_check_lpm=False)
+        ape_boot[i, :, :] = compute_ape(x, data, x_labels, x_labels[1:], ols_results['b_hat'], probit_results['theta'], logit_results['theta'], do_check_lpm=False)
 
-    if do_pea:
-        return b_lpm_boot, b_probit_boot, b_logit_boot, special_pes_boot, pea_boot, pea_intensive_boot
-    
-    else:
-        return b_lpm_boot, b_probit_boot, b_logit_boot, special_pes_boot, ape_boot, subsamples_events
+    return b_lpm_boot, b_probit_boot, b_logit_boot, ape_boot, subsamples_events #, pea_boot, pea_intensive_boot
